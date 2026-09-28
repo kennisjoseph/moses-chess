@@ -1,0 +1,439 @@
+'use client';
+
+import { useState } from 'react';
+import { classifyResult, parsePgnMoves, getOpeningName } from '../lib/pgn';
+import { buildGameAnalyses, computeDiagnostics } from '../lib/diagnostics';
+import { rankTopIssues } from '../lib/issues';
+import { StockfishEngine } from '../lib/engine';
+import { analyzeGamesForBlunders } from '../lib/blunders';
+
+function getMostPlayedTimeClass(stats) {
+  const classes = ['bullet', 'blitz', 'rapid'];
+  let best = 'rapid';
+  let bestCount = -1;
+
+  for (const key of classes) {
+    const s = stats[`chess_${key}`];
+    if (!s || !s.record) continue;
+    const total = (s.record.win || 0) + (s.record.loss || 0) + (s.record.draw || 0);
+    if (total > bestCount) {
+      bestCount = total;
+      best = key;
+    }
+  }
+  return best;
+}
+
+function analyzeGame(game, username) {
+  const isWhite = game.white.username.toLowerCase() === username.toLowerCase();
+  const mine = isWhite ? game.white : game.black;
+  const theirs = isWhite ? game.black : game.white;
+
+  let result;
+  if (mine.result === 'win') result = 'win';
+  else if (theirs.result === 'win') result = 'loss';
+  else result = 'draw';
+
+  const moves = parsePgnMoves(game.pgn);
+  const mySide = isWhite ? 'white' : 'black';
+  const myMoves = moves.filter((m) => m.side === mySide);
+  const finalOwnClock = myMoves.length > 0 ? myMoves[myMoves.length - 1].clockSeconds : null;
+
+  return {
+    result,
+    color: mySide,
+    opponent: theirs.username,
+    opponentRating: theirs.rating,
+    terminationLabel: classifyResult(result === 'loss' ? mine.result : theirs.result),
+    opening: getOpeningName(game.eco),
+    endTime: game.end_time,
+    finalOwnClock,
+  };
+}
+
+function formatClock(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function ProfileSkeleton() {
+  return (
+    <div className="profile-card">
+      <div className="skeleton skeleton-avatar" />
+      <div className="profile-info" style={{ flex: 1 }}>
+        <div
+          className="skeleton"
+          style={{ width: '140px', height: '20px', marginBottom: '8px' }}
+        />
+        <div
+          className="skeleton"
+          style={{ width: '100px', height: '14px', marginBottom: '14px' }}
+        />
+        <div style={{ display: 'flex', gap: '16px' }}>
+          <div className="skeleton" style={{ width: '50px', height: '30px' }} />
+          <div className="skeleton" style={{ width: '50px', height: '30px' }} />
+          <div className="skeleton" style={{ width: '50px', height: '30px' }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GamesSkeleton() {
+  return (
+    <div className="games-section">
+      <div className="skeleton" style={{ width: '160px', height: '14px', marginBottom: '8px' }} />
+      <div className="games-list">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div className="game-row" key={i}>
+            <div className="skeleton" style={{ width: '100%', height: '16px' }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function HomePage() {
+  const [username, setUsername] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [data, setData] = useState(null);
+
+  const [gamesLoading, setGamesLoading] = useState(false);
+  const [gamesError, setGamesError] = useState(null);
+  const [games, setGames] = useState(null);
+  const [timeClassUsed, setTimeClassUsed] = useState(null);
+
+  const [engineLoading, setEngineLoading] = useState(false);
+  const [engineProgress, setEngineProgress] = useState(null);
+  const [engineStats, setEngineStats] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const uname = username.trim();
+    if (!uname) return;
+
+    setLoading(true);
+    setError(null);
+    setData(null);
+    setGames(null);
+    setGamesError(null);
+    setEngineStats(null);
+
+    try {
+      const res = await fetch(`/api/profile/${encodeURIComponent(uname)}`);
+      const json = await res.json();
+
+      if (!res.ok) {
+        setError(json.error || 'Something went wrong.');
+        setLoading(false);
+        return;
+      }
+
+      setData(json);
+      setLoading(false);
+
+      const timeClass = getMostPlayedTimeClass(json.stats);
+      setTimeClassUsed(timeClass);
+      setGamesLoading(true);
+
+      const gamesRes = await fetch(
+        `/api/games/${encodeURIComponent(uname)}?timeClass=${timeClass}&count=30`
+      );
+      const gamesJson = await gamesRes.json();
+
+      if (!gamesRes.ok) {
+        setGamesError(gamesJson.error || 'Could not load games.');
+      } else {
+        setGames(gamesJson.games);
+      }
+    } catch (err) {
+      setError('Could not reach the server.');
+      setLoading(false);
+    } finally {
+      setGamesLoading(false);
+    }
+  }
+
+  async function runDeepAnalysis() {
+    if (!games || games.length === 0 || !data) return;
+
+    setEngineLoading(true);
+    setEngineStats(null);
+    setEngineProgress({ current: 0, total: Math.min(games.length, 6) });
+
+    const engine = new StockfishEngine('/engine/stockfish-19-lite-single.js');
+    await engine.ready;
+
+    const sample = games.slice(0, 6);
+    const stats = await analyzeGamesForBlunders(engine, sample, data.profile.username, {
+      depth: 10,
+      maxPlies: 50,
+      onProgress: (current, total) => setEngineProgress({ current, total }),
+    });
+
+    engine.terminate();
+    setEngineStats(stats);
+    setEngineLoading(false);
+  }
+
+  const hasGames = games && games.length > 0;
+  const analyses = hasGames && data ? buildGameAnalyses(games, data.profile.username) : null;
+  const diagnostics = analyses ? computeDiagnostics(analyses) : null;
+  const topIssues = diagnostics ? rankTopIssues(diagnostics, engineStats) : null;
+
+  return (
+    <div className="hero">
+      <h1>Find out what's actually capping your rating.</h1>
+      <p className="subtitle">
+        Enter your chess.com username. We'll pull your recent games and tell you
+        the 3 fixable things costing you the most rating points.
+      </p>
+      <form className="search-form" onSubmit={handleSubmit}>
+        <input
+          type="text"
+          placeholder="chess.com username"
+          className="username-input"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
+        <button type="submit" className="analyze-btn" disabled={loading}>
+          {loading ? 'Loading…' : 'Analyze'}
+        </button>
+      </form>
+
+      {error && <p className="error-text">{error}</p>}
+
+      {loading && <ProfileSkeleton />}
+
+      {data && (
+        <div className="profile-card">
+          {data.profile.avatar ? (
+            <img src={data.profile.avatar} alt="" className="avatar" />
+          ) : (
+            <div className="avatar avatar-fallback">
+              {data.profile.username[0].toUpperCase()}
+            </div>
+          )}
+          <div className="profile-info">
+            <h2>{data.profile.username}</h2>
+            <p className="profile-name">{data.profile.name || ''}</p>
+            <div className="rating-grid">
+              {data.stats.chess_rapid && (
+                <div className="rating-box">
+                  <span className="rating-label">Rapid</span>
+                  <span className="rating-value">{data.stats.chess_rapid.last.rating}</span>
+                </div>
+              )}
+              {data.stats.chess_blitz && (
+                <div className="rating-box">
+                  <span className="rating-label">Blitz</span>
+                  <span className="rating-value">{data.stats.chess_blitz.last.rating}</span>
+                </div>
+              )}
+              {data.stats.chess_bullet && (
+                <div className="rating-box">
+                  <span className="rating-label">Bullet</span>
+                  <span className="rating-value">{data.stats.chess_bullet.last.rating}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {gamesLoading && <GamesSkeleton />}
+      {gamesError && <p className="error-text">{gamesError}</p>}
+
+      {games && games.length === 0 && (
+        <p className="empty-state">
+          No {timeClassUsed} games found yet for this account. Play a few rated games and
+          analyze again.
+        </p>
+      )}
+
+      {topIssues && diagnostics && (
+        <div className="verdict-section">
+          <h3 className="verdict-heading">
+            Your top {topIssues.length === 1 ? 'issue' : 'issues'}
+          </h3>
+          <p className="verdict-subheading">
+            Based on your last {diagnostics.total} {timeClassUsed} games
+          </p>
+          {diagnostics.total < 10 && (
+            <p className="sample-note">
+              Small sample ({diagnostics.total} games) — this may shift as you play more.
+            </p>
+          )}
+          {topIssues.map((issue, idx) => (
+            <div className="issue-card" key={issue.id}>
+              <div className="issue-number">{idx + 1}</div>
+              <div className="issue-body">
+                <div className="issue-title">{issue.title}</div>
+                <div className="issue-detail">{issue.detail}</div>
+                <div className="issue-fix">
+                  <span className="issue-fix-label">Fix:</span>
+                  {issue.fix}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {diagnostics && (
+        <div className="diagnostics-section">
+          <h3 className="games-heading">The numbers behind it</h3>
+
+          <div className="stat-cards">
+            <div className="stat-card">
+              <span className="stat-label">Record</span>
+              <span className="stat-value">
+                {diagnostics.wins}W {diagnostics.losses}L {diagnostics.draws}D
+              </span>
+              <span className="stat-sub">{Math.round(diagnostics.winRate * 100)}% win rate</span>
+            </div>
+
+            <div className="stat-card">
+              <span className="stat-label">Rating trend (this sample)</span>
+              <span className="stat-value">
+                {diagnostics.firstRating} → {diagnostics.lastRating}
+              </span>
+              <span
+                className={`stat-sub ${
+                  diagnostics.ratingChange > 0
+                    ? 'stat-positive'
+                    : diagnostics.ratingChange < 0
+                    ? 'stat-negative'
+                    : ''
+                }`}
+              >
+                {diagnostics.ratingChange > 0 ? '+' : ''}
+                {diagnostics.ratingChange}
+              </span>
+            </div>
+
+            <div className="stat-card">
+              <span className="stat-label">Time trouble losses</span>
+              <span className="stat-value">
+                {diagnostics.timeTroubleLosses} / {diagnostics.losses}
+              </span>
+              <span className="stat-sub">
+                {Math.round(diagnostics.timeTroubleLossRate * 100)}% of losses, under 30s left
+              </span>
+            </div>
+          </div>
+
+          <div className="termination-breakdown">
+            <span className="games-heading">How losses ended</span>
+            <div className="termination-list">
+              {Object.entries(diagnostics.terminationCounts)
+                .sort((a, b) => b[1] - a[1])
+                .map(([code, count]) => (
+                  <div className="termination-row" key={code}>
+                    <span>{classifyResult(code)}</span>
+                    <span className="termination-count">{count}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          <div className="opening-problems">
+            <span className="games-heading">Problem openings</span>
+            {diagnostics.openingStats.length === 0 ? (
+              <p className="subtitle" style={{ fontSize: '14px', marginBottom: 0 }}>
+                Not enough repeated openings yet to spot a pattern.
+              </p>
+            ) : (
+              <div className="opening-list">
+                {diagnostics.openingStats.slice(0, 3).map((o) => (
+                  <div className="opening-row" key={o.opening}>
+                    <span className="opening-name">{o.opening}</span>
+                    <span className="opening-record">
+                      {o.win}W {o.loss}L {o.draw}D
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {hasGames && (
+        <div className="deep-analysis-section">
+          <h3 className="games-heading">Deep engine analysis</h3>
+          <p className="engine-note">
+            Runs Stockfish directly in your browser on your {Math.min(games.length, 6)} most
+            recent games to find actual blunders, not just outcome patterns. Takes a minute
+            or two.
+          </p>
+          <button className="secondary-btn" onClick={runDeepAnalysis} disabled={engineLoading}>
+            {engineLoading ? 'Analyzing…' : 'Run deep analysis (Stockfish)'}
+          </button>
+          {engineLoading && engineProgress && (
+            <p className="engine-progress">
+              Analyzing game {engineProgress.current} of {engineProgress.total}…
+            </p>
+          )}
+          {engineStats && !engineLoading && (
+            <div className="stat-cards" style={{ marginTop: '16px' }}>
+              <div className="stat-card">
+                <span className="stat-label">Games analyzed</span>
+                <span className="stat-value">{engineStats.totalGames}</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-label">Blunders found</span>
+                <span className="stat-value">{engineStats.totalBlunders}</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-label">Avg. blunders / game</span>
+                <span className="stat-value">{engineStats.avgBlundersPerGame.toFixed(1)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasGames && (
+        <div className="games-section">
+          <h3 className="games-heading">
+            Last {games.length} {timeClassUsed} games
+          </h3>
+          <div className="games-list">
+            {games.map((game) => {
+              const g = analyzeGame(game, data.profile.username);
+              return (
+                <div className="game-row" key={game.url}>
+                  <div className="game-row-top">
+                    <span className={`result-badge result-${g.result}`}>
+                      {g.result === 'win' ? 'W' : g.result === 'loss' ? 'L' : 'D'}
+                    </span>
+                    <span className="game-opponent">
+                      vs {g.opponent} ({g.opponentRating})
+                    </span>
+                    <span className="game-date">
+                      {new Date(g.endTime * 1000).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="game-row-bottom">
+                    <span className="game-opening">{g.opening}</span>
+                    {g.finalOwnClock !== null && (
+                      <span
+                        className={`clock-badge ${g.finalOwnClock < 30 ? 'clock-low' : ''}`}
+                      >
+                        ⏱ {formatClock(g.finalOwnClock)} left
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

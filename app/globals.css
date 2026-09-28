@@ -1,0 +1,571 @@
+:root {
+  --bg: #312e2b;
+  --bg-deep: #262421;
+  --text: rgba(255, 255, 255, 0.85);
+  --text-secondary: rgba(255, 255, 255, 0.72);
+  --text-muted: rgba(255, 255, 255, 0.5);
+  --green: #81b64c;
+  --green-hover: #5d9948;
+  --green-press: #45753c;
+  --green-text: #17210d;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+.site-header {
+  background: var(--bg-deep);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 24px;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.logo span {
+  color: var(--green);
+}
+
+.hero {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 80px 24px 24px;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: 34px;
+  line-height: 1.25;
+  margin-bottom: 16px;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1.5;
+  margin-bottom: 32px;
+}
+
+.search-form {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.username-input {
+  flex: 1;
+  max-width: 320px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--bg-deep);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.username-input:focus {
+  outline: none;
+  border-color: var(--green);
+}
+
+.analyze-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  background: var(--green);
+  color: var(--green-text);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.analyze-btn:hover {
+  background: var(--green-hover);
+}
+
+.analyze-btn:active {
+  background: var(--green-press);
+}
+
+.error-text {
+  color: #ff6b6b;
+  margin-top: 16px;
+}
+
+.profile-card {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  background: var(--bg-deep);
+  border-radius: 10px;
+  padding: 24px;
+  margin-top: 32px;
+  text-align: left;
+}
+
+.avatar,
+.avatar-fallback {
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green);
+  color: var(--green-text);
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.profile-info h2 {
+  font-size: 20px;
+  margin-bottom: 2px;
+}
+
+.profile-name {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.rating-grid {
+  display: flex;
+  gap: 16px;
+}
+
+.rating-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.rating-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.rating-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.games-section {
+  margin-top: 24px;
+  text-align: left;
+}
+
+.games-heading {
+  font-size: 14px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.games-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.game-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 14px;
+}
+
+.game-row:last-child {
+  border-bottom: none;
+}
+
+.game-row-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.game-row-bottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 34px;
+}
+
+.result-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.result-win {
+  background: var(--green);
+  color: var(--green-text);
+}
+
+.result-loss {
+  background: #8b3a3a;
+  color: #ffdada;
+}
+
+.result-draw {
+  background: #555;
+  color: #ddd;
+}
+
+.game-opponent {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.game-date {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.game-opening {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex: 1;
+}
+
+.clock-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.clock-badge.clock-low {
+  background: rgba(139, 58, 58, 0.4);
+  color: #ffb3b3;
+}
+.diagnostics-section {
+  margin-top: 32px;
+  text-align: left;
+}
+
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--bg-deep);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.stat-positive {
+  color: var(--green);
+}
+
+.stat-negative {
+  color: #ff8080;
+}
+
+.termination-breakdown,
+.opening-problems {
+  margin-bottom: 24px;
+}
+
+.termination-list,
+.opening-list {
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.termination-row,
+.opening-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 14px;
+}
+
+.termination-row:last-child,
+.opening-row:last-child {
+  border-bottom: none;
+}
+
+.termination-count {
+  color: var(--text-muted);
+}
+
+.opening-name {
+  color: var(--text-secondary);
+}
+
+.opening-record {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.verdict-section {
+  margin-top: 32px;
+  text-align: left;
+}
+
+.verdict-heading {
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.verdict-subheading {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.issue-card {
+  background: var(--bg-deep);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 16px;
+}
+
+.issue-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--green);
+  color: var(--green-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.issue-body {
+  flex: 1;
+}
+
+.issue-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.issue-detail {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.issue-fix {
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(129, 182, 76, 0.08);
+  border-left: 3px solid var(--green);
+  padding: 10px 12px;
+  border-radius: 4px;
+  line-height: 1.5;
+}
+
+.issue-fix-label {
+  font-weight: 700;
+  color: var(--green);
+  margin-right: 4px;
+}
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.09) 37%,
+    rgba(255, 255, 255, 0.04) 63%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 4px;
+}
+
+.skeleton-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.empty-state {
+  margin-top: 32px;
+  padding: 20px;
+  background: var(--bg-deep);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  text-align: left;
+}
+
+.sample-note {
+  font-size: 12px;
+  color: #e0b34d;
+  margin-top: -12px;
+  margin-bottom: 16px;
+}
+
+.analyze-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+@media (max-width: 480px) {
+  .hero {
+    padding: 48px 16px 16px;
+  }
+
+  .hero h1 {
+    font-size: 24px;
+  }
+
+  .subtitle {
+    font-size: 14px;
+  }
+
+  .search-form {
+    flex-direction: column;
+  }
+
+  .username-input {
+    max-width: 100%;
+  }
+
+  .analyze-btn {
+    width: 100%;
+  }
+
+  .profile-card {
+    flex-wrap: wrap;
+  }
+
+  .rating-grid {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .stat-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .game-row-bottom {
+    padding-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .issue-card {
+    flex-direction: column;
+  }
+
+  .issue-number {
+    margin-bottom: 4px;
+  }
+}
+
+.deep-analysis-section {
+  margin-top: 24px;
+  text-align: left;
+}
+
+.engine-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  margin-bottom: 12px;
+}
+
+.secondary-btn {
+  padding: 10px 20px;
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--green);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background: rgba(129, 182, 76, 0.1);
+}
+
+.secondary-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.engine-progress {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
