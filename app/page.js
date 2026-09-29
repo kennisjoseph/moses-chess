@@ -125,6 +125,32 @@ function TimeClassPicker({ counts, selected, onSelect, disabled }) {
   );
 }
 
+const SAMPLE_SIZES = [30, 100, 200];
+
+function SampleSizePicker({ selected, onSelect, disabled }) {
+  return (
+    <div className="sample-picker">
+      <span className="sample-picker-label">Sample size:</span>
+      {SAMPLE_SIZES.map((size) => (
+        <button
+          key={size}
+          type="button"
+          className={`sample-chip ${selected === size ? 'sample-chip-active' : ''}`}
+          disabled={disabled}
+          onClick={() => onSelect(size)}
+        >
+          {size}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function getLastPlayedTimestamp(stats, timeClass) {
+  const s = stats[`chess_${timeClass}`];
+  return s?.last?.date ?? null;
+}
+
 export default function HomePage() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
@@ -141,11 +167,12 @@ export default function HomePage() {
   const [engineProgress, setEngineProgress] = useState(null);
   const [engineStats, setEngineStats] = useState(null);
 
-  // Bumped whenever the user switches speed or searches again, so results
-  // from an older request (or an old engine run) never overwrite newer ones.
+  const [sampleSize, setSampleSize] = useState(30);
+  const [fetchProgress, setFetchProgress] = useState(null);
+
   const requestId = useRef(0);
 
-  async function loadGames(uname, timeClass) {
+  async function loadGames(uname, timeClass, statsForLastPlayed, count = 30) {
     const myRequest = ++requestId.current;
 
     setTimeClassUsed(timeClass);
@@ -154,23 +181,76 @@ export default function HomePage() {
     setEngineStats(null);
     setEngineProgress(null);
     setGamesLoading(true);
+    setFetchProgress(null);
+
+    const lastPlayed = statsForLastPlayed
+      ? getLastPlayedTimestamp(statsForLastPlayed, timeClass)
+      : null;
+    const url =
+      `/api/games/${encodeURIComponent(uname)}?timeClass=${timeClass}&count=${count}` +
+      (lastPlayed ? `&startBefore=${lastPlayed}` : '');
 
     try {
-      const gamesRes = await fetch(
-        `/api/games/${encodeURIComponent(uname)}?timeClass=${timeClass}&count=30`
-      );
-      const gamesJson = await gamesRes.json();
-      if (myRequest !== requestId.current) return;
+      const res = await fetch(url);
+      if (!res.ok || !res.body) {
+        const json = await res.json().catch(() => ({}));
+        if (myRequest === requestId.current) {
+          setGamesError(json.error || 'Could not load games.');
+          setGamesLoading(false);
+        }
+        return;
+      }
 
-      if (!gamesRes.ok) {
-        setGamesError(gamesJson.error || 'Could not load games.');
-      } else {
-        setGames(gamesJson.games);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        if (myRequest !== requestId.current) {
+          reader.cancel();
+          return;
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep the last, possibly incomplete line
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const msg = JSON.parse(line);
+
+          if (msg.type === 'progress') {
+            if (myRequest === requestId.current) {
+              setFetchProgress({
+                monthsSearched: msg.monthsSearched,
+                gamesFound: msg.gamesFound,
+                targetCount: msg.targetCount,
+              });
+            }
+          } else if (msg.type === 'error') {
+            if (myRequest === requestId.current) {
+              setGamesError(msg.message);
+              setGamesLoading(false);
+            }
+            return;
+          } else if (msg.type === 'done') {
+            if (myRequest === requestId.current) {
+              setGames(msg.games);
+              setGamesLoading(false);
+              setFetchProgress(null);
+            }
+            return;
+          }
+        }
       }
     } catch (err) {
-      if (myRequest === requestId.current) setGamesError('Could not reach the server.');
-    } finally {
-      if (myRequest === requestId.current) setGamesLoading(false);
+      if (myRequest === requestId.current) {
+        setGamesError('Could not reach the server.');
+        setGamesLoading(false);
+      }
     }
   }
 
@@ -191,6 +271,7 @@ export default function HomePage() {
     setEngineStats(null);
     setEngineProgress(null);
     setEngineLoading(false);
+    setFetchProgress(null);
 
     try {
       const res = await fetch(`/api/profile/${encodeURIComponent(uname)}`);
@@ -210,7 +291,7 @@ export default function HomePage() {
 
       const best = getMostPlayedTimeClass(counts);
       if (best) {
-        await loadGames(json.profile.username, best);
+        await loadGames(json.profile.username, best, json.stats, sampleSize);
       }
     } catch (err) {
       setError('Could not reach the server.');
@@ -323,22 +404,36 @@ export default function HomePage() {
         </div>
       )}
 
-      {classCounts &&
+            {classCounts &&
         (hasAnyGames ? (
-          <TimeClassPicker
-            counts={classCounts}
-            selected={timeClassUsed}
-            disabled={engineLoading}
-            onSelect={(key) => loadGames(data.profile.username, key)}
-          />
+          <>
+            <TimeClassPicker
+              counts={classCounts}
+              selected={timeClassUsed}
+              disabled={engineLoading || gamesLoading}
+              onSelect={(key) => loadGames(data.profile.username, key, data.stats, sampleSize)}
+            />
+            <SampleSizePicker
+              selected={sampleSize}
+              disabled={engineLoading || gamesLoading}
+              onSelect={(size) => {
+                setSampleSize(size);
+                loadGames(data.profile.username, timeClassUsed, data.stats, size);
+              }}
+            />
+          </>
         ) : (
           <p className="empty-state">No rated games found on this account yet.</p>
         ))}
 
-        {gamesLoading && (
+      {gamesLoading && (
         <>
           <p className="engine-note">
-            Fetching games — this can take longer for very active accounts.
+            {fetchProgress
+              ? `Checked ${fetchProgress.monthsSearched} month${
+                  fetchProgress.monthsSearched === 1 ? '' : 's'
+                } — found ${fetchProgress.gamesFound} of ${fetchProgress.targetCount} games so far…`
+              : 'Fetching games…'}
           </p>
           <GamesSkeleton />
         </>

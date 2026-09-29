@@ -683,3 +683,41 @@ body {
   color: var(--text-secondary);
   line-height: 1.5;
 }
+
+.sample-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.sample-picker-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sample-chip {
+  padding: 6px 14px;
+  background: var(--bg-deep);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.sample-chip:hover:not(:disabled) {
+  border-color: var(--green);
+}
+
+.sample-chip-active {
+  border-color: var(--green);
+  background: rgba(129, 182, 76, 0.12);
+}
+
+.sample-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
