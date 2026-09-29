@@ -1,23 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { classifyResult, parsePgnMoves, getOpeningName } from '../lib/pgn';
 import { buildGameAnalyses, computeDiagnostics } from '../lib/diagnostics';
 import { rankTopIssues } from '../lib/issues';
 import { StockfishEngine } from '../lib/engine';
 import { analyzeGamesForBlunders } from '../lib/blunders';
 
-function getMostPlayedTimeClass(stats) {
-  const classes = ['bullet', 'blitz', 'rapid'];
-  let best = 'rapid';
-  let bestCount = -1;
+const TIME_CLASSES = ['bullet', 'blitz', 'rapid', 'daily'];
 
-  for (const key of classes) {
+function getClassCounts(stats) {
+  const counts = {};
+  for (const key of TIME_CLASSES) {
     const s = stats[`chess_${key}`];
-    if (!s || !s.record) continue;
-    const total = (s.record.win || 0) + (s.record.loss || 0) + (s.record.draw || 0);
-    if (total > bestCount) {
-      bestCount = total;
+    counts[key] =
+      s && s.record ? (s.record.win || 0) + (s.record.loss || 0) + (s.record.draw || 0) : 0;
+  }
+  return counts;
+}
+
+function getMostPlayedTimeClass(counts) {
+  let best = null;
+  let bestCount = 0;
+  for (const key of TIME_CLASSES) {
+    if (counts[key] > bestCount) {
+      bestCount = counts[key];
       best = key;
     }
   }
@@ -95,11 +102,34 @@ function GamesSkeleton() {
   );
 }
 
+function TimeClassPicker({ counts, selected, onSelect, disabled }) {
+  return (
+    <div className="class-picker">
+      {TIME_CLASSES.map((key) => {
+        const count = counts[key];
+        return (
+          <button
+            key={key}
+            type="button"
+            className={`class-chip ${selected === key ? 'class-chip-active' : ''}`}
+            disabled={disabled || count === 0}
+            onClick={() => onSelect(key)}
+          >
+            <span className="class-chip-name">{key}</span>
+            <span className="class-chip-count">{count.toLocaleString()} games</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
+  const [classCounts, setClassCounts] = useState(null);
 
   const [gamesLoading, setGamesLoading] = useState(false);
   const [gamesError, setGamesError] = useState(null);
@@ -110,17 +140,56 @@ export default function HomePage() {
   const [engineProgress, setEngineProgress] = useState(null);
   const [engineStats, setEngineStats] = useState(null);
 
+  // Bumped whenever the user switches speed or searches again, so results
+  // from an older request (or an old engine run) never overwrite newer ones.
+  const requestId = useRef(0);
+
+  async function loadGames(uname, timeClass) {
+    const myRequest = ++requestId.current;
+
+    setTimeClassUsed(timeClass);
+    setGames(null);
+    setGamesError(null);
+    setEngineStats(null);
+    setEngineProgress(null);
+    setGamesLoading(true);
+
+    try {
+      const gamesRes = await fetch(
+        `/api/games/${encodeURIComponent(uname)}?timeClass=${timeClass}&count=30`
+      );
+      const gamesJson = await gamesRes.json();
+      if (myRequest !== requestId.current) return;
+
+      if (!gamesRes.ok) {
+        setGamesError(gamesJson.error || 'Could not load games.');
+      } else {
+        setGames(gamesJson.games);
+      }
+    } catch (err) {
+      if (myRequest === requestId.current) setGamesError('Could not reach the server.');
+    } finally {
+      if (myRequest === requestId.current) setGamesLoading(false);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     const uname = username.trim();
     if (!uname) return;
 
+    requestId.current += 1; // abandon anything still in flight
     setLoading(true);
     setError(null);
     setData(null);
+    setClassCounts(null);
     setGames(null);
     setGamesError(null);
+    setGamesLoading(false);
+    setTimeClassUsed(null);
     setEngineStats(null);
+    setEngineProgress(null);
+    setEngineLoading(false);
 
     try {
       const res = await fetch(`/api/profile/${encodeURIComponent(uname)}`);
@@ -135,50 +204,51 @@ export default function HomePage() {
       setData(json);
       setLoading(false);
 
-      const timeClass = getMostPlayedTimeClass(json.stats);
-      setTimeClassUsed(timeClass);
-      setGamesLoading(true);
+      const counts = getClassCounts(json.stats);
+      setClassCounts(counts);
 
-      const gamesRes = await fetch(
-        `/api/games/${encodeURIComponent(uname)}?timeClass=${timeClass}&count=30`
-      );
-      const gamesJson = await gamesRes.json();
-
-      if (!gamesRes.ok) {
-        setGamesError(gamesJson.error || 'Could not load games.');
-      } else {
-        setGames(gamesJson.games);
+      const best = getMostPlayedTimeClass(counts);
+      if (best) {
+        await loadGames(json.profile.username, best);
       }
     } catch (err) {
       setError('Could not reach the server.');
       setLoading(false);
-    } finally {
-      setGamesLoading(false);
     }
   }
 
   async function runDeepAnalysis() {
     if (!games || games.length === 0 || !data) return;
 
+    const myRequest = requestId.current;
+    const sample = games.slice(0, 6);
+
     setEngineLoading(true);
     setEngineStats(null);
-    setEngineProgress({ current: 0, total: Math.min(games.length, 6) });
+    setEngineProgress({ current: 0, total: sample.length });
 
     const engine = new StockfishEngine('/engine/stockfish-19-lite-single.js');
-    await engine.ready;
 
-    const sample = games.slice(0, 6);
-    const stats = await analyzeGamesForBlunders(engine, sample, data.profile.username, {
-      depth: 10,
-      maxPlies: 50,
-      onProgress: (current, total) => setEngineProgress({ current, total }),
-    });
+    try {
+      await engine.ready;
 
-    engine.terminate();
-    setEngineStats(stats);
-    setEngineLoading(false);
+      const stats = await analyzeGamesForBlunders(engine, sample, data.profile.username, {
+        depth: 10,
+        maxPlies: 50,
+        onProgress: (current, total) => setEngineProgress({ current, total }),
+        shouldCancel: () => myRequest !== requestId.current,
+      });
+
+      if (myRequest === requestId.current) setEngineStats(stats);
+    } catch (err) {
+      // engine failed to run; leave the stats empty
+    } finally {
+      engine.terminate();
+      if (myRequest === requestId.current) setEngineLoading(false);
+    }
   }
 
+  const hasAnyGames = classCounts && Object.values(classCounts).some((n) => n > 0);
   const hasGames = games && games.length > 0;
   const analyses = hasGames && data ? buildGameAnalyses(games, data.profile.username) : null;
   const diagnostics = analyses ? computeDiagnostics(analyses) : null;
@@ -239,18 +309,43 @@ export default function HomePage() {
                   <span className="rating-value">{data.stats.chess_bullet.last.rating}</span>
                 </div>
               )}
+              {data.stats.chess_daily && (
+                <div className="rating-box">
+                  <span className="rating-label">Daily</span>
+                  <span className="rating-value">{data.stats.chess_daily.last.rating}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {gamesLoading && <GamesSkeleton />}
+      {classCounts &&
+        (hasAnyGames ? (
+          <TimeClassPicker
+            counts={classCounts}
+            selected={timeClassUsed}
+            disabled={engineLoading}
+            onSelect={(key) => loadGames(data.profile.username, key)}
+          />
+        ) : (
+          <p className="empty-state">No rated games found on this account yet.</p>
+        ))}
+
+        {gamesLoading && (
+        <>
+          <p className="engine-note">
+            Fetching games — this can take longer for very active accounts.
+          </p>
+          <GamesSkeleton />
+        </>
+      )}
+
       {gamesError && <p className="error-text">{gamesError}</p>}
 
       {games && games.length === 0 && (
         <p className="empty-state">
-          No {timeClassUsed} games found yet for this account. Play a few rated games and
-          analyze again.
+          No recent {timeClassUsed} games found (we look back about two years).
         </p>
       )}
 
@@ -315,15 +410,17 @@ export default function HomePage() {
               </span>
             </div>
 
-            <div className="stat-card">
-              <span className="stat-label">Time trouble losses</span>
-              <span className="stat-value">
-                {diagnostics.timeTroubleLosses} / {diagnostics.losses}
-              </span>
-              <span className="stat-sub">
-                {Math.round(diagnostics.timeTroubleLossRate * 100)}% of losses, under 30s left
-              </span>
-            </div>
+            {timeClassUsed !== 'daily' && (
+              <div className="stat-card">
+                <span className="stat-label">Time trouble losses</span>
+                <span className="stat-value">
+                  {diagnostics.timeTroubleLosses} / {diagnostics.losses}
+                </span>
+                <span className="stat-sub">
+                  {Math.round(diagnostics.timeTroubleLossRate * 100)}% of losses, under 30s left
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="termination-breakdown">
@@ -379,20 +476,27 @@ export default function HomePage() {
             </p>
           )}
           {engineStats && !engineLoading && (
-            <div className="stat-cards" style={{ marginTop: '16px' }}>
-              <div className="stat-card">
-                <span className="stat-label">Games analyzed</span>
-                <span className="stat-value">{engineStats.totalGames}</span>
+            <>
+              <div className="stat-cards" style={{ marginTop: '16px' }}>
+                <div className="stat-card">
+                  <span className="stat-label">Games analyzed</span>
+                  <span className="stat-value">{engineStats.totalGames}</span>
+                </div>
+                <div className="stat-card">
+                  <span className="stat-label">Blunders found</span>
+                  <span className="stat-value">{engineStats.totalBlunders}</span>
+                </div>
+                <div className="stat-card">
+                  <span className="stat-label">Avg. blunders / game</span>
+                  <span className="stat-value">{engineStats.avgBlundersPerGame.toFixed(1)}</span>
+                </div>
               </div>
-              <div className="stat-card">
-                <span className="stat-label">Blunders found</span>
-                <span className="stat-value">{engineStats.totalBlunders}</span>
-              </div>
-              <div className="stat-card">
-                <span className="stat-label">Avg. blunders / game</span>
-                <span className="stat-value">{engineStats.avgBlundersPerGame.toFixed(1)}</span>
-              </div>
-            </div>
+              {engineStats.skipped > 0 && (
+                <p className="engine-note">
+                  {engineStats.skipped} game(s) couldn't be read and were skipped.
+                </p>
+              )}
+            </>
           )}
         </div>
       )}
