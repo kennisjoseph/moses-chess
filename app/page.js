@@ -253,7 +253,9 @@ export default function HomePage() {
   const hasGames = games && games.length > 0;
   const analyses = hasGames && data ? buildGameAnalyses(games, data.profile.username) : null;
   const diagnostics = analyses ? computeDiagnostics(analyses) : null;
-  const topIssues = diagnostics ? rankTopIssues(diagnostics, engineStats, timeClassUsed) : null;
+  const verdictResult = diagnostics ? rankTopIssues(diagnostics, engineStats, timeClassUsed) : null;
+  const topIssues = verdictResult?.issues ?? null;
+  const strength = verdictResult?.strength ?? null;
 
   return (
     <div className="hero">
@@ -363,11 +365,16 @@ export default function HomePage() {
               Small sample ({diagnostics.total} games) — this may shift as you play more.
             </p>
           )}
-          {topIssues.map((issue, idx) => (
+                    {topIssues.map((issue, idx) => (
             <div className="issue-card" key={issue.id}>
               <div className="issue-number">{idx + 1}</div>
               <div className="issue-body">
-                <div className="issue-title">{issue.title}</div>
+                <div className="issue-title-row">
+                  <span className="issue-title">{issue.title}</span>
+                  <span className={`severity-badge severity-${issue.severity}`}>
+                    {issue.severity}
+                  </span>
+                </div>
                 <div className="issue-detail">{issue.detail}</div>
                 <div className="issue-fix">
                   <span className="issue-fix-label">Fix:</span>
@@ -376,6 +383,14 @@ export default function HomePage() {
               </div>
             </div>
           ))}
+
+          {strength && (
+            <div className="strength-card">
+              <span className="strength-label">✓ Doing well</span>
+              <div className="strength-title">{strength.title}</div>
+              <div className="strength-detail">{strength.detail}</div>
+            </div>
+          )}
         </div>
       )}
 
