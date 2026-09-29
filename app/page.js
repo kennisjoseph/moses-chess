@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { classifyResult, parsePgnMoves, getOpeningName } from '../lib/pgn';
-import { buildGameAnalyses, computeDiagnostics } from '../lib/diagnostics';
+import { buildGameAnalyses, computeDiagnostics, getTimeTroubleThresholdFor } from '../lib/diagnostics';
 import { rankTopIssues } from '../lib/issues';
 import { StockfishEngine } from '../lib/engine';
 import { analyzeGamesForBlunders } from '../lib/blunders';
@@ -55,6 +55,7 @@ function analyzeGame(game, username) {
     opening: getOpeningName(game.eco),
     endTime: game.end_time,
     finalOwnClock,
+    clockLowThreshold: getTimeTroubleThresholdFor(game.time_control),
   };
 }
 
@@ -252,7 +253,7 @@ export default function HomePage() {
   const hasGames = games && games.length > 0;
   const analyses = hasGames && data ? buildGameAnalyses(games, data.profile.username) : null;
   const diagnostics = analyses ? computeDiagnostics(analyses) : null;
-  const topIssues = diagnostics ? rankTopIssues(diagnostics, engineStats) : null;
+  const topIssues = diagnostics ? rankTopIssues(diagnostics, engineStats, timeClassUsed) : null;
 
   return (
     <div className="hero">
@@ -417,7 +418,7 @@ export default function HomePage() {
                   {diagnostics.timeTroubleLosses} / {diagnostics.losses}
                 </span>
                 <span className="stat-sub">
-                  {Math.round(diagnostics.timeTroubleLossRate * 100)}% of losses, under 30s left
+                  {Math.round(diagnostics.timeTroubleLossRate * 100)}% of losses, clock nearly out
                 </span>
               </div>
             )}
@@ -526,7 +527,9 @@ export default function HomePage() {
                     <span className="game-opening">{g.opening}</span>
                     {g.finalOwnClock !== null && (
                       <span
-                        className={`clock-badge ${g.finalOwnClock < 30 ? 'clock-low' : ''}`}
+                        className={`clock-badge ${
+                          g.finalOwnClock < g.clockLowThreshold ? 'clock-low' : ''
+                        }`}
                       >
                         ⏱ {formatClock(g.finalOwnClock)} left
                       </span>
