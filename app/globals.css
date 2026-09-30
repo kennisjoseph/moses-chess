@@ -731,3 +731,34 @@ body {
   cursor: pointer;
   padding: 0;
 }
+
+.turning-point-card {
+  display: block;
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: var(--bg-deep);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+
+.turning-point-card:hover {
+  border-color: var(--green);
+}
+
+.turning-point-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--green);
+  margin-bottom: 4px;
+}
+
+.turning-point-detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}

@@ -675,11 +675,31 @@ export default function HomePage() {
                   <span className="stat-label">Blunders found</span>
                   <span className="stat-value">{engineStats.totalBlunders}</span>
                 </div>
-                <div className="stat-card">
+                                <div className="stat-card">
                   <span className="stat-label">Avg. blunders / game</span>
                   <span className="stat-value">{engineStats.avgBlundersPerGame.toFixed(1)}</span>
                 </div>
+                <div className="stat-card">
+                  <span className="stat-label">Blown advantages</span>
+                  <span className="stat-value">{engineStats.blownAdvantages}</span>
+                </div>
               </div>
+              {engineStats.worstTurningPoint && (
+                <a
+                  className="turning-point-card"
+                  href={engineStats.worstTurningPoint.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span className="turning-point-label">Biggest single moment</span>
+                  <span className="turning-point-detail">
+                    Move {engineStats.worstTurningPoint.moveNumber}:{' '}
+                    {engineStats.worstTurningPoint.san} in the{' '}
+                    {engineStats.worstTurningPoint.phase} — a{' '}
+                    {engineStats.worstTurningPoint.evalSwing}cp swing. Tap to see the game.
+                  </span>
+                </a>
+              )}
                             {engineStats.skipped > 0 && (
                 <p className="engine-note">
                   {engineStats.skipped} game(s) couldn't be read and were skipped.
