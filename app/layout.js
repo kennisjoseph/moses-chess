@@ -17,6 +17,12 @@ export default function RootLayout({ children }) {
           </div>
         </header>
         <main>{children}</main>
+                <footer className="site-footer">
+          <p>
+            Not affiliated with, endorsed by, or sponsored by Chess.com. Chess.com is a
+            trademark of Chess.com, LLC.
+          </p>
+        </footer>
         <Analytics />
       </body>
     </html>

@@ -7,6 +7,7 @@ import { rankTopIssues } from '../lib/issues';
 import { EnginePool } from '../lib/engine';
 import { analyzeGamesForBlunders, DEPTH_PRESETS, hashGameUrls } from '../lib/blunders';
 import { findPatterns } from '../lib/patterns';
+import { generateShareCardDataUrl } from '../lib/shareCard';
 
 const TIME_CLASSES = ['bullet', 'blitz', 'rapid', 'daily'];
 
@@ -150,6 +151,30 @@ function SampleSizePicker({ selected, onSelect, disabled }) {
 function getLastPlayedTimestamp(stats, timeClass) {
   const s = stats[`chess_${timeClass}`];
   return s?.last?.date ?? null;
+}
+
+function PrivacyNote() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="privacy-note">
+      <button type="button" className="privacy-toggle" onClick={() => setOpen((o) => !o)}>
+        {open ? 'Hide' : 'How this works & privacy'}
+      </button>
+      {open && (
+        <div className="privacy-body">
+          <p>
+            This reads only public data from chess.com's own API, your profile, stats,
+            and game history. Nothing you type is stored on any server this project runs.
+          </p>
+          <p>
+            The engine analysis (Stockfish) runs entirely in your own browser your games
+            are never sent anywhere for that part. Results are cached in your browser's
+            local storage only, on your device, so a repeat search is instant.
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const DEPTH_PRESET_KEYS = ['quick', 'standard', 'deep'];
@@ -454,12 +479,29 @@ export default function HomePage() {
   const topIssues = verdictResult?.issues ?? null;
   const strength = verdictResult?.strength ?? null;
 
+  function downloadShareCard() {
+    if (!data || !diagnostics || !topIssues || topIssues.length === 0) return;
+    const dataUrl = generateShareCardDataUrl({
+      username: data.profile.username,
+      diagnostics,
+      topIssue: topIssues[0],
+      strength,
+      pattern: patterns && patterns.length > 0 ? patterns[0] : null,
+      timeClass: timeClassUsed,
+      siteUrl: 'https://moses-chess.vercel.app/',
+    });
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `${data.profile.username}-ratingfix-report.png`;
+    link.click();
+  }
+
   return (
     <div className="hero">
-      <h1>Find out what's actually capping your rating.</h1>
+            <h1>Don't review one game. Find the habits behind your last 100.</h1>
       <p className="subtitle">
-        Enter your chess.com username. We'll pull your recent games and tell you
-        the 3 fixable things costing you the most rating points.
+        Enter your chess.com username. We'll pull a batch of your recent games and
+        find the real patterns behind your losses — not just what happened in one game.
       </p>
       <form className="search-form" onSubmit={handleSubmit}>
         <input
@@ -473,7 +515,7 @@ export default function HomePage() {
           {loading ? 'Loading…' : 'Analyze'}
         </button>
       </form>
-
+          <PrivacyNote />
       {error && <p className="error-text">{error}</p>}
 
       {loading && <ProfileSkeleton />}
@@ -599,6 +641,9 @@ export default function HomePage() {
               <div className="strength-detail">{strength.detail}</div>
             </div>
           )}
+          <button type="button" className="secondary-btn share-btn" onClick={downloadShareCard}>
+            Download shareable image
+          </button>
         </div>
       )}
 

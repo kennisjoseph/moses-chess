@@ -850,3 +850,67 @@ body {
   color: var(--green);
   background: rgba(129, 182, 76, 0.1);
 }
+
+.privacy-note {
+  margin-top: 16px;
+}
+
+.privacy-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.privacy-toggle:hover {
+  color: var(--green);
+}
+
+.privacy-body {
+  margin-top: 10px;
+  padding: 14px 16px;
+  background: var(--bg-deep);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.privacy-body p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.privacy-body p:last-child {
+  margin-bottom: 0;
+}
+
+.privacy-body a {
+  color: var(--green);
+}
+
+.share-btn {
+  margin-top: 12px;
+}
+
+.site-footer {
+  max-width: 640px;
+  margin: 40px auto 0;
+  padding: 20px 24px 40px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.site-footer a {
+  color: var(--text-muted);
+  text-decoration: underline;
+}
+
+.site-footer a:hover {
+  color: var(--green);
+}
