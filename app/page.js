@@ -211,6 +211,7 @@ export default function HomePage() {
   const [engineCached, setEngineCached] = useState(false);
 
   const requestId = useRef(0);
+  const loadGamesTimer = useRef(null);
 
   async function loadGames(uname, timeClass, statsForLastPlayed, count = 30) {
     const myRequest = ++requestId.current;
@@ -286,12 +287,24 @@ export default function HomePage() {
           }
         }
       }
-    } catch (err) {
+        } catch (err) {
       if (myRequest === requestId.current) {
         setGamesError('Could not reach the server.');
         setGamesLoading(false);
       }
     }
+  }
+
+  // Debounces picker changes so clicking two chips in quick succession
+  // (e.g. time control, then sample size) fires one fetch, not two.
+  function scheduleGamesLoad(nextTimeClass, nextSampleSize) {
+    setTimeClassUsed(nextTimeClass);
+    setSampleSize(nextSampleSize);
+
+    if (loadGamesTimer.current) clearTimeout(loadGamesTimer.current);
+    loadGamesTimer.current = setTimeout(() => {
+      loadGames(data.profile.username, nextTimeClass, data.stats, nextSampleSize);
+    }, 800);
   }
 
   async function handleSubmit(e) {
@@ -469,15 +482,12 @@ export default function HomePage() {
               counts={classCounts}
               selected={timeClassUsed}
               disabled={engineLoading || gamesLoading}
-              onSelect={(key) => loadGames(data.profile.username, key, data.stats, sampleSize)}
+              onSelect={(key) => scheduleGamesLoad(key, sampleSize)}
             />
             <SampleSizePicker
               selected={sampleSize}
               disabled={engineLoading || gamesLoading}
-              onSelect={(size) => {
-                setSampleSize(size);
-                loadGames(data.profile.username, timeClassUsed, data.stats, size);
-              }}
+              onSelect={(size) => scheduleGamesLoad(timeClassUsed, size)}
             />
           </>
         ) : (
