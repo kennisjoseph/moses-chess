@@ -4,8 +4,8 @@ import { useState, useRef } from 'react';
 import { classifyResult, parsePgnMoves, getOpeningName } from '../lib/pgn';
 import { buildGameAnalyses, computeDiagnostics, getTimeTroubleThresholdFor } from '../lib/diagnostics';
 import { rankTopIssues } from '../lib/issues';
-import { StockfishEngine } from '../lib/engine';
-import { analyzeGamesForBlunders } from '../lib/blunders';
+import { EnginePool } from '../lib/engine';
+import { analyzeGamesForBlunders, DEPTH_PRESETS, hashGameUrls } from '../lib/blunders';
 
 const TIME_CLASSES = ['bullet', 'blitz', 'rapid', 'daily'];
 
@@ -151,6 +151,43 @@ function getLastPlayedTimestamp(stats, timeClass) {
   return s?.last?.date ?? null;
 }
 
+const DEPTH_PRESET_KEYS = ['quick', 'standard', 'deep'];
+
+function DepthPresetPicker({ selected, onSelect, disabled }) {
+  return (
+    <div className="sample-picker">
+      <span className="sample-picker-label">Analysis depth:</span>
+      {DEPTH_PRESET_KEYS.map((key) => (
+        <button
+          key={key}
+          type="button"
+          className={`sample-chip ${selected === key ? 'sample-chip-active' : ''}`}
+          disabled={disabled}
+          onClick={() => onSelect(key)}
+        >
+          {DEPTH_PRESETS[key].label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function readAnalysisCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeAnalysisCache(key, stats) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), stats }));
+  } catch (err) {
+    // storage full or unavailable — analysis still works, just won't be cached
+  }
+}
 export default function HomePage() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
@@ -169,6 +206,9 @@ export default function HomePage() {
 
   const [sampleSize, setSampleSize] = useState(30);
   const [fetchProgress, setFetchProgress] = useState(null);
+
+  const [depthPreset, setDepthPreset] = useState('standard');
+  const [engineCached, setEngineCached] = useState(false);
 
   const requestId = useRef(0);
 
@@ -299,33 +339,51 @@ export default function HomePage() {
     }
   }
 
-  async function runDeepAnalysis() {
+    async function runDeepAnalysis(forceRerun = false) {
     if (!games || games.length === 0 || !data) return;
 
     const myRequest = requestId.current;
     const sample = games.slice(0, 6);
+    const preset = DEPTH_PRESETS[depthPreset];
+    const cacheKey = `sf-cache:${data.profile.username}:${timeClassUsed}:${depthPreset}:${hashGameUrls(
+      sample
+    )}`;
+
+    if (!forceRerun) {
+      const cached = readAnalysisCache(cacheKey);
+      if (cached) {
+        setEngineStats(cached.stats);
+        setEngineCached(true);
+        return;
+      }
+    }
 
     setEngineLoading(true);
     setEngineStats(null);
+    setEngineCached(false);
     setEngineProgress({ current: 0, total: sample.length });
 
-    const engine = new StockfishEngine('/engine/stockfish-19-lite-single.js');
+    const poolSize = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
+    const pool = new EnginePool(poolSize, '/engine/stockfish-19-lite-single.js');
 
     try {
-      await engine.ready;
+      await pool.ready();
 
-      const stats = await analyzeGamesForBlunders(engine, sample, data.profile.username, {
-        depth: 10,
-        maxPlies: 50,
+      const stats = await analyzeGamesForBlunders(pool, sample, data.profile.username, {
+        depth: preset.depth,
+        maxPlies: preset.maxPlies,
         onProgress: (current, total) => setEngineProgress({ current, total }),
         shouldCancel: () => myRequest !== requestId.current,
       });
 
-      if (myRequest === requestId.current) setEngineStats(stats);
+      if (myRequest === requestId.current) {
+        setEngineStats(stats);
+        writeAnalysisCache(cacheKey, stats);
+      }
     } catch (err) {
       // engine failed to run; leave the stats empty
     } finally {
-      engine.terminate();
+      pool.terminate();
       if (myRequest === requestId.current) setEngineLoading(false);
     }
   }
@@ -578,12 +636,22 @@ export default function HomePage() {
             recent games to find actual blunders, not just outcome patterns. Takes a minute
             or two.
           </p>
-          <button className="secondary-btn" onClick={runDeepAnalysis} disabled={engineLoading}>
+          <DepthPresetPicker
+            selected={depthPreset}
+            disabled={engineLoading}
+            onSelect={setDepthPreset}
+          />
+          <button
+            className="secondary-btn"
+            style={{ marginTop: '10px' }}
+            onClick={() => runDeepAnalysis(false)}
+            disabled={engineLoading}
+          >
             {engineLoading ? 'Analyzing…' : 'Run deep analysis (Stockfish)'}
           </button>
           {engineLoading && engineProgress && (
             <p className="engine-progress">
-              Analyzing game {engineProgress.current} of {engineProgress.total}…
+              Analyzed {engineProgress.current} of {engineProgress.total} games…
             </p>
           )}
           {engineStats && !engineLoading && (
@@ -602,9 +670,17 @@ export default function HomePage() {
                   <span className="stat-value">{engineStats.avgBlundersPerGame.toFixed(1)}</span>
                 </div>
               </div>
-              {engineStats.skipped > 0 && (
+                            {engineStats.skipped > 0 && (
                 <p className="engine-note">
                   {engineStats.skipped} game(s) couldn't be read and were skipped.
+                </p>
+              )}
+              {engineCached && (
+                <p className="engine-note">
+                  Loaded from a saved run.{' '}
+                  <button className="link-btn" onClick={() => runDeepAnalysis(true)}>
+                    Re-run fresh
+                  </button>
                 </p>
               )}
             </>

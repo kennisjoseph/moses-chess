@@ -721,3 +721,13 @@ body {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--green);
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
