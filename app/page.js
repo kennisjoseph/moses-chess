@@ -6,6 +6,7 @@ import { buildGameAnalyses, computeDiagnostics, getTimeTroubleThresholdFor } fro
 import { rankTopIssues } from '../lib/issues';
 import { EnginePool } from '../lib/engine';
 import { analyzeGamesForBlunders, DEPTH_PRESETS, hashGameUrls } from '../lib/blunders';
+import { findPatterns } from '../lib/patterns';
 
 const TIME_CLASSES = ['bullet', 'blitz', 'rapid', 'daily'];
 
@@ -152,6 +153,29 @@ function getLastPlayedTimestamp(stats, timeClass) {
 }
 
 const DEPTH_PRESET_KEYS = ['quick', 'standard', 'deep'];
+const DEEP_ANALYSIS_SIZES = [6, 12, 20];
+
+function DeepAnalysisSizePicker({ selected, onSelect, disabled, maxAvailable }) {
+  const options = DEEP_ANALYSIS_SIZES.filter((n) => n <= maxAvailable);
+  if (options.length === 0) options.push(maxAvailable);
+
+  return (
+    <div className="sample-picker">
+      <span className="sample-picker-label">Games to deep-analyze:</span>
+      {options.map((n) => (
+        <button
+          key={n}
+          type="button"
+          className={`sample-chip ${selected === n ? 'sample-chip-active' : ''}`}
+          disabled={disabled}
+          onClick={() => onSelect(n)}
+        >
+          {n}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function DepthPresetPicker({ selected, onSelect, disabled }) {
   return (
@@ -208,7 +232,11 @@ export default function HomePage() {
   const [fetchProgress, setFetchProgress] = useState(null);
 
   const [depthPreset, setDepthPreset] = useState('standard');
+  const [deepAnalysisCount, setDeepAnalysisCount] = useState(6);
   const [engineCached, setEngineCached] = useState(false);
+
+  const [patterns, setPatterns] = useState(null);
+  const [patternsPreliminary, setPatternsPreliminary] = useState(false);
 
   const requestId = useRef(0);
   const loadGamesTimer = useRef(null);
@@ -217,12 +245,14 @@ export default function HomePage() {
     const myRequest = ++requestId.current;
 
     setTimeClassUsed(timeClass);
-    setGames(null);
+        setGames(null);
     setGamesError(null);
     setEngineStats(null);
     setEngineProgress(null);
     setGamesLoading(true);
     setFetchProgress(null);
+    setPatterns(null);
+    setPatternsPreliminary(false);
 
     const lastPlayed = statsForLastPlayed
       ? getLastPlayedTimestamp(statsForLastPlayed, timeClass)
@@ -356,9 +386,9 @@ export default function HomePage() {
     if (!games || games.length === 0 || !data) return;
 
     const myRequest = requestId.current;
-    const sample = games.slice(0, 6);
+    const sample = games.slice(0, Math.min(deepAnalysisCount, games.length));
     const preset = DEPTH_PRESETS[depthPreset];
-    const cacheKey = `sf-cache:${data.profile.username}:${timeClassUsed}:${depthPreset}:${hashGameUrls(
+    const cacheKey = `sf-cache:${data.profile.username}:${timeClassUsed}:${depthPreset}:${sample.length}:${hashGameUrls(
       sample
     )}`;
 
@@ -367,6 +397,8 @@ export default function HomePage() {
       if (cached) {
         setEngineStats(cached.stats);
         setEngineCached(true);
+        setPatterns(findPatterns(cached.stats.perGame));
+        setPatternsPreliminary(false);
         return;
       }
     }
@@ -375,6 +407,8 @@ export default function HomePage() {
     setEngineStats(null);
     setEngineCached(false);
     setEngineProgress({ current: 0, total: sample.length });
+    setPatterns(null);
+    setPatternsPreliminary(false);
 
     const poolSize = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
     const pool = new EnginePool(poolSize, '/engine/stockfish-19-lite-single.js');
@@ -385,13 +419,24 @@ export default function HomePage() {
       const stats = await analyzeGamesForBlunders(pool, sample, data.profile.username, {
         depth: preset.depth,
         maxPlies: preset.maxPlies,
-        onProgress: (current, total) => setEngineProgress({ current, total }),
+        onProgress: (current, total, partialPerGame) => {
+          if (myRequest !== requestId.current) return;
+          setEngineProgress({ current, total });
+
+          const done = (partialPerGame || []).filter(Boolean);
+          if (done.length >= 2) {
+            setPatterns(findPatterns(done));
+            setPatternsPreliminary(current < total);
+          }
+        },
         shouldCancel: () => myRequest !== requestId.current,
       });
 
       if (myRequest === requestId.current) {
         setEngineStats(stats);
         writeAnalysisCache(cacheKey, stats);
+        setPatterns(findPatterns(stats.perGame));
+        setPatternsPreliminary(false);
       }
     } catch (err) {
       // engine failed to run; leave the stats empty
@@ -642,10 +687,17 @@ export default function HomePage() {
         <div className="deep-analysis-section">
           <h3 className="games-heading">Deep engine analysis</h3>
           <p className="engine-note">
-            Runs Stockfish directly in your browser on your {Math.min(games.length, 6)} most
-            recent games to find actual blunders, not just outcome patterns. Takes a minute
-            or two.
+            Runs Stockfish directly in your browser on your{' '}
+            {Math.min(deepAnalysisCount, games.length)} most recent games (out of the{' '}
+            {games.length} loaded above) to find actual blunders, not just outcome patterns.
+            More games and higher depth both take longer.
           </p>
+          <DeepAnalysisSizePicker
+            selected={deepAnalysisCount}
+            disabled={engineLoading}
+            maxAvailable={games.length}
+            onSelect={setDeepAnalysisCount}
+          />
           <DepthPresetPicker
             selected={depthPreset}
             disabled={engineLoading}
@@ -659,10 +711,42 @@ export default function HomePage() {
           >
             {engineLoading ? 'Analyzing…' : 'Run deep analysis (Stockfish)'}
           </button>
-          {engineLoading && engineProgress && (
+                    {engineLoading && engineProgress && (
             <p className="engine-progress">
               Analyzed {engineProgress.current} of {engineProgress.total} games…
             </p>
+          )}
+          {patterns && patterns.length > 0 && (
+            <div className="patterns-section">
+              <div className="patterns-heading-row">
+                <span className="games-heading">Patterns across these games</span>
+                                {patternsPreliminary && (
+                  <span className="patterns-preliminary-tag">
+                    <span className="patterns-preliminary-dot" />
+                    Live
+                  </span>
+                )}
+              </div>
+              {patterns.map((p) => (
+                <div className="pattern-card" key={p.id}>
+                  <span className="pattern-name">{p.name}</span>
+                  <p className="pattern-description">{p.description}</p>
+                  <div className="pattern-examples">
+                    {p.examples.map((ex, i) => (
+                      <a
+                        key={i}
+                        className="pattern-example-link"
+                        href={ex.gameUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Move {ex.moveNumber} · {ex.san} ({ex.severity})
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
           {engineStats && !engineLoading && (
             <>
