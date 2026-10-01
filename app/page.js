@@ -501,7 +501,7 @@ export default function HomePage() {
             <h1>Don't review one game. Find the habits behind your last 100.</h1>
       <p className="subtitle">
         Enter your chess.com username. We'll pull a batch of your recent games and
-        find the real patterns behind your losses — not just what happened in one game.
+        find the real patterns behind your losses not just what happened in one game.
       </p>
       <form className="search-form" onSubmit={handleSubmit}>
         <input
